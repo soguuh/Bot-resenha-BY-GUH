@@ -1,0 +1,46 @@
+[
+    {
+        "assunto": "Brasil Colônia",
+        "pergunta": "Em que ano ocorreu a chegada da esquadra de Pedro Álvares Cabral ao Brasil?",
+        "opcoes": [
+            "1492",
+            "1500",
+            "1530",
+            "1549"
+        ],
+        "resposta": "B"
+    },
+    {
+        "assunto": "Independência do Brasil",
+        "pergunta": "Em que ano foi proclamada a Independência do Brasil?",
+        "opcoes": [
+            "1808",
+            "1815",
+            "1822",
+            "1889"
+        ],
+        "resposta": "C"
+    },
+    {
+        "assunto": "Independência do Brasil",
+        "pergunta": "Quem proclamou a Independência do Brasil?",
+        "opcoes": [
+            "Dom Pedro I",
+            "Dom João VI",
+            "Tiradentes",
+            "Deodoro da Fonseca"
+        ],
+        "resposta": "A"
+    },
+    {
+        "assunto": "República",
+        "pergunta": "Em que ano foi proclamada a República no Brasil?",
+        "opcoes": [
+            "1822",
+            "1850",
+            "1888",
+            "1889"
+        ],
+        "resposta": "D"
+    }
+]
