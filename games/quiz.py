@@ -2,13 +2,14 @@ import asyncio
 import json
 import random
 from pathlib import Path
-
+import hashlib
 import discord
 from discord.ext import commands
 
 DATA_DIR = Path(__file__).resolve().parent / "dados"
 QUESTIONS_FILE = DATA_DIR / "perguntas.json"
 STATS_FILE = DATA_DIR / "estatisticas_quiz.json"
+HISTORY_FILE = DATA_DIR / "historico_perguntas.json"
 MATERIAS_DIR = DATA_DIR / "materias"
 
 
@@ -66,6 +67,27 @@ def salvar_json(caminho, dados):
         json.dump(dados, arquivo, ensure_ascii=False, indent=4)
 
     temporario.replace(caminho)
+
+def gerar_id_pergunta(pergunta):
+    dados = json.dumps(
+        [
+            pergunta["materia"],
+            pergunta["assunto"],
+            pergunta["pergunta"]
+        ],
+        ensure_ascii=False
+    )
+
+    return hashlib.sha256(dados.encode("utf-8")).hexdigest()
+
+
+def gerar_chave_historico(materia, assunto):
+    dados = json.dumps(
+        [materia, assunto],
+        ensure_ascii=False
+    )
+
+    return hashlib.sha256(dados.encode("utf-8")).hexdigest()
 
 
 def carregar_todas_perguntas():
@@ -222,18 +244,15 @@ class SelecaoAssunto(discord.ui.Select):
 
         assunto = self.values[0]
         partida["assunto"] = assunto
-        partida["fila"] = [
-            p for p in partida["perguntas"]
-            if p["materia"] == partida["materia"]
-            and p["assunto"] == assunto
-        ]
-
-        random.shuffle(partida["fila"])
 
         quantidade_solicitada = partida["quantidade"]
-        quantidade_disponivel = len(partida["fila"])
 
-        partida["fila"] = partida["fila"][:quantidade_solicitada]
+        partida["fila"] = self.cog.sortear_perguntas(
+            materia=partida["materia"],
+            assunto=assunto,
+            perguntas=partida["perguntas"],
+            quantidade=quantidade_solicitada
+        )
 
         if not partida["fila"]:
             return await interaction.response.send_message(
@@ -435,6 +454,72 @@ class Quiz(commands.Cog):
         self.bot = bot
         self.partidas = {}
         self.stats = carregar_json(STATS_FILE, {"usuarios": {}})
+
+        self.historico = carregar_json(
+            HISTORY_FILE,
+            {"usadas": {}}
+        )
+
+        if not isinstance(self.historico, dict):
+            self.historico = {"usadas": {}}
+
+        if not isinstance(self.historico.get("usadas"), dict):
+            self.historico["usadas"] = {}
+
+        self.salvar_historico()
+
+    def salvar_historico(self):
+        salvar_json(HISTORY_FILE, self.historico)
+
+    def sortear_perguntas(self, materia, assunto, perguntas, quantidade):
+        banco = [
+            p for p in perguntas
+            if p["materia"] == materia
+            and p["assunto"] == assunto
+        ]
+
+        if not banco:
+            return []
+
+        chave = gerar_chave_historico(materia, assunto)
+
+        ids_banco = {
+            gerar_id_pergunta(p)
+            for p in banco
+        }
+
+        usadas = set(
+            self.historico["usadas"].get(chave, [])
+        )
+
+        usadas.intersection_update(ids_banco)
+
+        disponiveis = [
+            p for p in banco
+            if gerar_id_pergunta(p) not in usadas
+        ]
+
+        if not disponiveis:
+            usadas.clear()
+            disponiveis = banco.copy()
+
+        random.shuffle(disponiveis)
+
+        selecionadas = disponiveis[:quantidade]
+
+        novas_usadas = usadas | {
+            gerar_id_pergunta(p)
+            for p in selecionadas
+        }
+
+        self.historico["usadas"][chave] = list(novas_usadas)
+
+        self.salvar_historico()
+
+        return selecionadas
+
+    def salvar_stats(self):
+        salvar_json(STATS_FILE, self.stats)
 
     def salvar_stats(self):
         salvar_json(STATS_FILE, self.stats)
