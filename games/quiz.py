@@ -521,9 +521,6 @@ class Quiz(commands.Cog):
     def salvar_stats(self):
         salvar_json(STATS_FILE, self.stats)
 
-    def salvar_stats(self):
-        salvar_json(STATS_FILE, self.stats)
-
     def pegar_jogadores_da_call(self, ctx):
         if not ctx.author.voice or not ctx.author.voice.channel:
             return None, "Entre em uma call de voz antes de iniciar o quiz."
