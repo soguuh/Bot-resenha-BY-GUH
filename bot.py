@@ -976,6 +976,8 @@ intents.message_content = True
 class GuhBot(commands.Bot):
 
     async def setup_hook(self):
+        print("[DEBUG] SETUP_HOOK EXECUTADO!", flush=True)
+
         extensoes = [
             "games.mimica",
             "games.quiz",
@@ -984,6 +986,7 @@ class GuhBot(commands.Bot):
 
         for extensao in extensoes:
             try:
+                print(f"[DEBUG] Tentando carregar: {extensao}", flush=True)
                 await self.load_extension(extensao)
                 print(f"[GAMES] Módulo carregado: {extensao}")
 
@@ -994,6 +997,9 @@ bot = GuhBot(
     command_prefix="/",
     intents=intents
 )
+
+print("[DEBUG] Classe utilizada:", type(bot).__name__, flush=True)
+print("[DEBUG] Método setup_hook:", bot.setup_hook, flush=True)
 
 def call_openrouter(prompt):
 
