@@ -164,7 +164,13 @@ def carregar_todas_perguntas():
 
     return perguntas
 
+META_MATERIAS = 33
+META_ASSUNTOS_POR_MATERIA = 300
+META_PERGUNTAS_POR_MATERIA = 1200
+META_PERGUNTAS_TOTAL = 39600
 
+RODADAS_MINIMAS = 5
+RODADAS_MAXIMAS = 100
 
 class SelecaoMateria(discord.ui.Select):
     def __init__(self, cog, canal_id, materias, pagina=0):
@@ -281,10 +287,11 @@ class SelecaoAssunto(discord.ui.Select):
             content=(
                 f"**Quiz iniciado!**\n"
                 f"Matéria: **{partida['materia']}**\n"
-                f"Assunto: **{assunto}**\n"
+                f"Assunto prioritário: **{assunto}**\n"
                 f"Participantes: **{len(partida['jogadores'])}**\n"
-                f"Perguntas disponíveis nesta partida: **{len(partida['fila'])}**\n"
-                "Cada pergunta terá 25 segundos."
+                f"Rodadas: **{len(partida['fila'])}**\n"
+                "Se necessário, outros assuntos da matéria completarão o sorteio.\n"
+                
             ),
             view=None
         )
@@ -527,6 +534,7 @@ class RespostasView(discord.ui.View):
             self.add_item(RespostaButton(cog, canal_id, indice, texto))
 
 
+
 class Quiz(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -550,53 +558,123 @@ class Quiz(commands.Cog):
         salvar_json(HISTORY_FILE, self.historico)
 
     def sortear_perguntas(self, materia, assunto, perguntas, quantidade):
-        banco = [
+        # Banco completo da matéria escolhida
+        banco_materia = [
             p for p in perguntas
             if p["materia"] == materia
-            and p["assunto"] == assunto
         ]
 
-        if not banco:
+        if not banco_materia:
             return []
 
-        chave = gerar_chave_historico(materia, assunto)
-
-        ids_banco = {
-            gerar_id_pergunta(p)
-            for p in banco
-        }
-
-        usadas = set(
-            self.historico["usadas"].get(chave, [])
-        )
-
-        usadas.intersection_update(ids_banco)
-
-        disponiveis = [
-            p for p in banco
-            if gerar_id_pergunta(p) not in usadas
+        # Perguntas do assunto escolhido têm prioridade
+        banco_assunto = [
+            p for p in banco_materia
+            if p["assunto"] == assunto
         ]
 
-        if not disponiveis:
-            usadas.clear()
-            disponiveis = banco.copy()
+        if not banco_assunto:
+            return []
 
-        random.shuffle(disponiveis)
+        disponiveis_assunto = []
+        disponiveis_outros = []
+        utilizadas = []
 
-        selecionadas = disponiveis[:quantidade]
+        # Verifica o histórico individual de cada assunto
+        for pergunta in banco_materia:
+            chave = gerar_chave_historico(
+                pergunta["materia"],
+                pergunta["assunto"]
+            )
 
-        novas_usadas = usadas | {
-            gerar_id_pergunta(p)
-            for p in selecionadas
-        }
+            ids_usados = set(
+                self.historico["usadas"].get(chave, [])
+            )
 
-        self.historico["usadas"][chave] = list(novas_usadas)
+            identificador = gerar_id_pergunta(pergunta)
+
+            if identificador not in ids_usados:
+                if pergunta["assunto"] == assunto:
+                    disponiveis_assunto.append(pergunta)
+                else:
+                    disponiveis_outros.append(pergunta)
+            else:
+                utilizadas.append(pergunta)
+
+        # Se toda a matéria foi utilizada, reinicia o histórico
+        if not disponiveis_assunto and not disponiveis_outros:
+            print(
+                f"[QUIZ] Todas as perguntas de {materia} foram utilizadas. "
+                "Reiniciando histórico."
+            )
+
+            for pergunta in banco_materia:
+                chave = gerar_chave_historico(
+                    pergunta["materia"],
+                    pergunta["assunto"]
+                )
+                self.historico["usadas"][chave] = []
+
+            disponiveis_assunto = banco_assunto.copy()
+
+            disponiveis_outros = [
+                p for p in banco_materia
+                if p["assunto"] != assunto
+            ]
+
+            utilizadas = []
+
+        # Sorteio aleatório com prioridade ao assunto selecionado
+        random.shuffle(disponiveis_assunto)
+        random.shuffle(disponiveis_outros)
+
+        selecionadas = disponiveis_assunto[:quantidade]
+
+        restante = quantidade - len(selecionadas)
+
+        if restante > 0:
+            selecionadas.extend(
+                disponiveis_outros[:restante]
+            )
+
+        # Se necessário, reutiliza perguntas antigas.
+        # Nunca repete uma pergunta dentro da mesma partida.
+        restante = quantidade - len(selecionadas)
+
+        if restante > 0:
+            ids_selecionados = {
+                gerar_id_pergunta(p)
+                for p in selecionadas
+            }
+
+            reutilizaveis = [
+                p for p in utilizadas
+                if gerar_id_pergunta(p) not in ids_selecionados
+            ]
+
+            random.shuffle(reutilizaveis)
+            selecionadas.extend(reutilizaveis[:restante])
+
+        random.shuffle(selecionadas)
+
+        # Registra as perguntas utilizadas em seus respectivos assuntos
+        for pergunta in selecionadas:
+            chave = gerar_chave_historico(
+                pergunta["materia"],
+                pergunta["assunto"]
+            )
+
+            ids_usados = set(
+                self.historico["usadas"].get(chave, [])
+            )
+
+            ids_usados.add(gerar_id_pergunta(pergunta))
+
+            self.historico["usadas"][chave] = list(ids_usados)
 
         self.salvar_historico()
 
         return selecionadas
-
-
 
     def salvar_stats(self):
         salvar_json(STATS_FILE, self.stats)
@@ -606,22 +684,29 @@ class Quiz(commands.Cog):
             return None, "Entre em uma call de voz antes de iniciar o quiz."
 
         canal_voz = ctx.author.voice.channel
+
         jogadores = {
             membro.id: membro
             for membro in canal_voz.members
             if not membro.bot
         }
+
         if len(jogadores) < 1:
             return None, "Não encontrei participantes na call."
+
         return jogadores, None
 
     @commands.command(name="quiz")
     async def quiz(self, ctx):
         """Inicia um quiz para as pessoas que estão na mesma call de voz."""
+
         if ctx.channel.id in self.partidas:
-            return await ctx.send("Já existe um quiz ativo neste canal de texto.")
+            return await ctx.send(
+                "Já existe um quiz ativo neste canal de texto."
+            )
 
         jogadores, erro = self.pegar_jogadores_da_call(ctx)
+
         if erro:
             return await ctx.send(erro)
 
@@ -629,7 +714,7 @@ class Quiz(commands.Cog):
         materias = sorted(MATERIAS_ARQUIVOS.values())
 
         if not materias:
-            return await ctx.send("Nenhuma matéria foi cadastrada. ")
+            return await ctx.send("Nenhuma matéria foi cadastrada.")
 
         self.partidas[ctx.channel.id] = {
             "materias": materias,
@@ -652,6 +737,7 @@ class Quiz(commands.Cog):
         }
 
         view = SelecaoQuantidadeView(self, ctx.channel.id)
+
         await ctx.send(
             f"**GUH QUIZ — seleção de matéria**\n"
             f"Encontrei **{len(jogadores)} jogador(es)** na call "
@@ -662,45 +748,97 @@ class Quiz(commands.Cog):
 
     async def proxima_pergunta(self, canal_id):
         partida = self.partidas.get(canal_id)
+
         if not partida:
             return
 
         if partida["numero"] >= len(partida["fila"]):
-            return await self.encerrar_quiz(canal_id, "As perguntas cadastradas acabaram.")
+            return await self.encerrar_quiz(
+                canal_id,
+                "As perguntas cadastradas acabaram."
+            )
 
         pergunta = partida["fila"][partida["numero"]]
+
         partida["numero"] += 1
         partida["pergunta_atual"] = pergunta
         partida["respondidos"] = set()
         partida["finalizando"] = False
 
         canal = self.bot.get_channel(canal_id)
+
         if canal is None:
             self.partidas.pop(canal_id, None)
             return
 
         embed = discord.Embed(
-            title=f"GUH QUIZ — Pergunta {partida['numero']}/{len(partida['fila'])}",
+            title=(
+                f"GUH QUIZ — Pergunta "
+                f"{partida['numero']}/{len(partida['fila'])}"
+            ),
             description=pergunta["pergunta"],
             color=discord.Color.blurple()
         )
-        embed.add_field(name="Matéria", value=partida["materia"], inline=True)
-        embed.add_field(name="Assunto", value=partida["assunto"], inline=True)
-        embed.add_field(name="Tempo", value="25 segundos", inline=True)
-        embed.set_footer(text="Responda individualmente pelos botões. Cada jogador tem uma tentativa.")
 
-        view = RespostasView(self, canal_id, pergunta["opcoes"])
+        embed.add_field(
+            name="Matéria",
+            value=partida["materia"],
+            inline=True
+        )
+
+        embed.add_field(
+            name="Assunto",
+            value=pergunta["assunto"],
+            inline=True
+        )
+
+        if pergunta["assunto"] != partida["assunto"]:
+            embed.add_field(
+                name="Assunto prioritário",
+                value=partida["assunto"],
+                inline=True
+            )
+
+        embed.add_field(
+            name="Tempo",
+            value="25 segundos",
+            inline=True
+        )
+
+        embed.set_footer(
+            text="Responda individualmente pelos botões. Cada jogador tem uma tentativa."
+        )
+
+        view = RespostasView(
+            self,
+            canal_id,
+            pergunta["opcoes"]
+        )
+
         mensagem = await canal.send(embed=embed, view=view)
+
         partida["view"] = view
         partida["mensagem"] = mensagem
-        partida["timer"] = asyncio.create_task(self.cronometro(canal_id, mensagem.id))
+        partida["timer"] = asyncio.create_task(
+            self.cronometro(canal_id, mensagem.id)
+        )
 
     async def cronometro(self, canal_id, mensagem_id):
         try:
             await asyncio.sleep(25)
+
             partida = self.partidas.get(canal_id)
-            if partida and partida["mensagem"] and partida["mensagem"].id == mensagem_id:
-                await self.finalizar_rodada(canal_id, motivo="O tempo de 25 segundos acabou.")
+
+            if (
+                partida
+                and partida["mensagem"]
+                and partida["mensagem"].id == mensagem_id
+            ):
+                await self.finalizar_rodada(
+                    canal_id,
+                    motivo="O tempo de 25 segundos acabou."
+                )
+
         except asyncio.CancelledError:
             pass
 
@@ -718,7 +856,6 @@ class Quiz(commands.Cog):
                 respostas = (
                     f"{len(partida['respondidos'])}/"
                     f"{len(partida['jogadores'])}"
-
                 )
 
                 if len(embed.fields) >= 4:
@@ -739,82 +876,131 @@ class Quiz(commands.Cog):
                     embed=embed,
                     view=partida.get("view")
                 )
+
         except discord.HTTPException as erro:
             print(f"[QUIZ] Erro ao atualizar o contador: {erro}")
 
     async def finalizar_rodada(self, canal_id, motivo):
         partida = self.partidas.get(canal_id)
+
         if not partida or partida["finalizando"]:
             return
+
         partida["finalizando"] = True
 
         timer = partida.get("timer")
+
         if timer and timer is not asyncio.current_task():
             timer.cancel()
 
         pergunta = partida["pergunta_atual"]
         letra = pergunta["resposta"].upper()
+
         if partida.get("mensagem"):
             try:
                 await partida["mensagem"].edit(view=None)
             except discord.HTTPException:
                 pass
+
         canal = self.bot.get_channel(canal_id)
+
         if canal:
             await canal.send(
                 f"⏱️ **Rodada encerrada!** {motivo}\n"
-                f"Resposta correta: **{letra} — {pergunta['opcoes'][ord(letra) - 65]}**"
+                f"Resposta correta: **{letra} — "
+                f"{pergunta['opcoes'][ord(letra) - 65]}**"
             )
+
             await asyncio.sleep(2)
             await self.proxima_pergunta(canal_id)
 
     @commands.command(name="final_quiz")
     async def final_quiz(self, ctx):
         """Encerra imediatamente a pergunta atual e avança."""
+
         partida = self.partidas.get(ctx.channel.id)
+
         if not partida:
-            return await ctx.send("Não existe um quiz ativo neste canal.")
+            return await ctx.send(
+                "Não existe um quiz ativo neste canal."
+            )
+
         if ctx.author.id not in partida["jogadores"]:
-            return await ctx.send("Só participantes da call podem encerrar a rodada.")
-        await self.finalizar_rodada(ctx.channel.id, f"{ctx.author.mention} encerrou a rodada.")
+            return await ctx.send(
+                "Só participantes da call podem encerrar a rodada."
+            )
+
+        await self.finalizar_rodada(
+            ctx.channel.id,
+            f"{ctx.author.mention} encerrou a rodada."
+        )
 
     async def encerrar_quiz(self, canal_id, motivo):
         partida = self.partidas.pop(canal_id, None)
+
         if not partida:
             return
 
         timer = partida.get("timer")
+
         if timer:
             timer.cancel()
 
         jogadores = partida["jogadores"]
         pontos = partida["pontos"]
-        ranking = sorted(pontos.items(), key=lambda item: item[1], reverse=True)
+
+        ranking = sorted(
+            pontos.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )
 
         linhas = []
+
         for posicao, (uid, total) in enumerate(ranking, start=1):
             membro = jogadores.get(uid)
             nome = membro.display_name if membro else f"Usuário {uid}"
-            linhas.append(f"**{posicao}º** {nome}: **{total} pontos**")
 
-            registro = self.stats["usuarios"].setdefault(str(uid), {
-                "partidas": 0, "pontos": 0, "vitorias": 0
-            })
+            linhas.append(
+                f"**{posicao}º** {nome}: **{total} pontos**"
+            )
+
+            registro = self.stats["usuarios"].setdefault(
+                str(uid),
+                {
+                    "partidas": 0,
+                    "pontos": 0,
+                    "vitorias": 0
+                }
+            )
+
             registro["partidas"] += 1
             registro["pontos"] += total
+
             if posicao == 1 and total > 0:
                 registro["vitorias"] += 1
+
             if hasattr(self.bot, "adicionar_xp") and total > 0:
-                self.bot.adicionar_xp(uid, max(5, total // 2))
+                self.bot.adicionar_xp(
+                    uid,
+                    max(5, total // 2)
+                )
 
         self.salvar_stats()
+
         canal = self.bot.get_channel(canal_id)
+
         if canal:
             embed = discord.Embed(
                 title="🏆 Resultado final do GUH QUIZ",
-                description=motivo + "\n\n" + ("\n".join(linhas) if linhas else "Sem pontuação."),
+                description=(
+                    motivo
+                    + "\n\n"
+                    + ("\n".join(linhas) if linhas else "Sem pontuação.")
+                ),
                 color=discord.Color.gold()
             )
+
             await canal.send(embed=embed)
 
     @commands.command(name="ranking_quiz")
@@ -824,16 +1010,29 @@ class Quiz(commands.Cog):
             key=lambda item: item[1].get("pontos", 0),
             reverse=True
         )[:10]
+
         if not ranking:
-            return await ctx.send("Ainda não há estatísticas do quiz.")
+            return await ctx.send(
+                "Ainda não há estatísticas do quiz."
+            )
+
         linhas = []
+
         for posicao, (uid, dados) in enumerate(ranking, start=1):
             linhas.append(
-                f"**{posicao}º** <@{uid}> — {dados.get('pontos', 0)} pontos "
+                f"**{posicao}º** <@{uid}> — "
+                f"{dados.get('pontos', 0)} pontos "
                 f"({dados.get('partidas', 0)} partidas)"
             )
-        await ctx.send("**RANKING GUH QUIZ**\n" + "\n".join(linhas))
+
+        await ctx.send(
+            "**RANKING GUH QUIZ**\n" + "\n".join(linhas)
+        )
+
 
 
 async def setup(bot):
     await bot.add_cog(Quiz(bot))
+
+    print("[QUIZ] Cog registrado:", bot.get_cog("Quiz"))
+    print("[QUIZ] Comando quiz:", bot.get_command("quiz"))
