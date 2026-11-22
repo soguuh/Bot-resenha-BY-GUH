@@ -220,15 +220,25 @@ class SelecaoMateria(discord.ui.Select):
 
 
 class SelecaoAssunto(discord.ui.Select):
-    def __init__(self, cog, canal_id, assuntos):
+    def __init__(self, cog, canal_id, assuntos, pagina=0):
         self.cog = cog
         self.canal_id = canal_id
+        self.assuntos = assuntos
+        self.pagina = pagina
+
+        inicio = pagina * 25
+        assuntos_pagina = assuntos[inicio:inicio + 25]
+
         opcoes = [
-            discord.SelectOption(label=assunto[:100], value=assunto)
-            for assunto in assuntos[:25]
+            discord.SelectOption(
+                label=assunto[:100],
+                value=assunto
+            )
+            for assunto in assuntos_pagina
         ]
+
         super().__init__(
-            placeholder="Escolha o assunto...",
+            placeholder=f"Escolha o assunto — página {pagina + 1}",
             min_values=1,
             max_values=1,
             options=opcoes
@@ -236,6 +246,7 @@ class SelecaoAssunto(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         partida = self.cog.partidas.get(self.canal_id)
+
         if not partida or interaction.user.id != partida["organizador"]:
             return await interaction.response.send_message(
                 "Somente quem iniciou o quiz pode escolher o assunto.",
@@ -259,26 +270,93 @@ class SelecaoAssunto(discord.ui.Select):
                 "Não existem perguntas cadastradas nesse assunto.",
                 ephemeral=True
             )
-        
-        partida["pontos"] = {uid: 0 for uid in partida["jogadores"]}
+
+        partida["pontos"] = {
+            uid: 0 for uid in partida["jogadores"]
+        }
         partida["respondidos"] = set()
         partida["numero"] = 0
 
         await interaction.response.edit_message(
             content=(
-                f"**Quiz iniciado!**\nMatéria: **{partida['materia']}**\n"
+                f"**Quiz iniciado!**\n"
+                f"Matéria: **{partida['materia']}**\n"
                 f"Assunto: **{assunto}**\n"
                 f"Participantes: **{len(partida['jogadores'])}**\n"
+                f"Perguntas disponíveis nesta partida: **{len(partida['fila'])}**\n"
                 "Cada pergunta terá 25 segundos."
             ),
             view=None
         )
+
         await self.cog.proxima_pergunta(self.canal_id)
 
 class SelecaoAssuntoView(discord.ui.View):
-    def __init__(self, cog, canal_id, assuntos):
+    def __init__(self, cog, canal_id, assuntos, pagina=0):
         super().__init__(timeout=180)
-        self.add_item(SelecaoAssunto(cog, canal_id, assuntos))
+
+        self.cog = cog
+        self.canal_id = canal_id
+        self.assuntos = assuntos
+        self.pagina = pagina
+
+        self.add_item(
+            SelecaoAssunto(
+                cog,
+                canal_id,
+                assuntos,
+                pagina
+            )
+        )
+
+        total_paginas = (len(assuntos) + 24) // 25
+
+        if pagina > 0:
+            self.add_item(BotaoPaginaAssunto(-1))
+
+        if pagina < total_paginas - 1:
+            self.add_item(BotaoPaginaAssunto(1))
+
+class BotaoPaginaAssunto(discord.ui.Button):
+    def __init__(self, direcao):
+        self.direcao = direcao
+
+        texto = (
+            "Página anterior"
+            if direcao == -1
+            else "Próxima página"
+        )
+
+        super().__init__(
+            label=texto,
+            style=discord.ButtonStyle.secondary
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        view_atual = self.view
+
+        partida = view_atual.cog.partidas.get(
+            view_atual.canal_id
+        )
+
+        if not partida or interaction.user.id != partida["organizador"]:
+            return await interaction.response.send_message(
+                "Somente quem iniciouo quiz pode navegar.",
+                ephemeral=True
+            )
+
+        nova_pagina = view_atual.pagina + self.direcao
+
+        nova_view = SelecaoAssuntoView(
+            view_atual.cog,
+            view_atual.canal_id,
+            view_atual.assuntos,
+            nova_pagina
+        )
+
+        await interaction.response.edit_message(
+            view=nova_view
+        )
 
 class SelecaoQuantidade(discord.ui.Select):
     def __init__(self, cog, canal_id):
@@ -310,7 +388,7 @@ class SelecaoQuantidade(discord.ui.Select):
             )
         if interaction.user.id != partida["organizador"]:
             return await interaction.response.send_message(
-                "Somentequem iniciou o quiz pode configurar partida.",
+                "Somente quem iniciou o quiz pode configurar partida.",
                 ephemeral=True
             )
 
@@ -518,6 +596,8 @@ class Quiz(commands.Cog):
 
         return selecionadas
 
+
+
     def salvar_stats(self):
         salvar_json(STATS_FILE, self.stats)
 
@@ -635,22 +715,32 @@ class Quiz(commands.Cog):
             embed = mensagem.embeds[0] if mensagem.embeds else None
 
             if embed:
-                embed.set_field_at(
-                    2,
-                    name="Respostas",
-                    value=(
-                        f"{len(partida['respondidos'])}/"
-                        f"{len(partida['jogadores'])}"
-                    ),
-                    inline=True
+                respostas = (
+                    f"{len(partida['respondidos'])}/"
+                    f"{len(partida['jogadores'])}"
+
                 )
+
+                if len(embed.fields) >= 4:
+                    embed.set_field_at(
+                        3,
+                        name="Respostas",
+                        value=respostas,
+                        inline=True
+                    )
+                else:
+                    embed.add_field(
+                        name="Respostas",
+                        value=respostas,
+                        inline=True
+                    )
 
                 await mensagem.edit(
                     embed=embed,
                     view=partida.get("view")
                 )
         except discord.HTTPException as erro:
-            print(f"[QUIZ] Erro ao atualizar contador: {erro}")
+            print(f"[QUIZ] Erro ao atualizar o contador: {erro}")
 
     async def finalizar_rodada(self, canal_id, motivo):
         partida = self.partidas.get(canal_id)
