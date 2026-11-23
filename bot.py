@@ -982,6 +982,7 @@ class GuhBot(commands.Bot):
             "games.mimica",
             "games.quiz",
             "games.desenho",
+            "games.jogodavelha",
         ]
 
         for extensao in extensoes:
