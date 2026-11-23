@@ -554,10 +554,11 @@ def adicionar_xp(usuario_id, quantidade=5):
 
 ## sistema dos jogos
 
-JOGOS_ADIVINHAR = {}
-JOGOS_FORCA = {}
+
 CRONOMETROS = {}
 POMODOROS = {}
+
+
 TEMPLATES = {
     "triagem_incidente": """
 # PAPEL E OBJETIVO
@@ -986,6 +987,10 @@ class GuhBot(commands.Bot):
             "games.quiz",
             "games.desenho",
             "games.jogodavelha",
+            "games.quemsoueu",
+
+            "games.adivinhar",
+            "games.forca",
         ]
 
         for extensao in extensoes:
@@ -1016,6 +1021,7 @@ bot = GuhBot(
     command_prefix="/",
     intents=intents
 )
+bot.adicionar_xp = adicionar_xp
 
 print("[DEBUG] Classe utilizada:", type(bot).__name__, flush=True)
 print("[DEBUG] Método setup_hook:", bot.setup_hook, flush=True)
@@ -1505,180 +1511,6 @@ async def sortear(ctx, *, opcoes: str):
         f"🎲 O destino decidiu: **{escolhido}**!"
     )
 
-## diversão e jogos
-## adivinhar
-
-@bot.command(name="adivinhar")
-async def adivinhar(ctx, tentativa: int = None):
-
-    usuario = str(ctx.author.id)
-
-    if tentativa is None:
-        JOGOS_ADIVINHAR[usuario] = random.randint(1, 100)
-
-        await ctx.send(
-            "🎯 Pensei em um número entre 1 e 100!\n"
-            "Use `/adivinhar número` para tentar."
-        )
-        return
-
-    if not 1 <= tentativa <= 100:
-        await ctx.send(
-            "Digite um número inteiro entre 1 e 100."
-        )
-        return
-
-    if usuario not in JOGOS_ADIVINHAR:
-        await ctx.send(
-            "Primeiro inicie o jogo com `/adivinhar`."
-        )
-        return
-
-    numero = JOGOS_ADIVINHAR[usuario]
-
-    if tentativa == numero:
-        del JOGOS_ADIVINHAR[usuario]
-
-        adicionar_xp(ctx.author.id, 25)
-
-        await ctx.send(
-            "🏆 **Você acertou!**\n"
-            "⭐ Você ganhou 25 XP!"
-        )
-
-    elif tentativa < numero:
-        await ctx.send("📈 Meu número é maior!")
-
-    else:
-        await ctx.send("📉 Meu número é menor!")
-
-
-## jogo da forca pra resenha
-
-## JOGO DA FORCA
-
-ARQUIVO_PALAVRAS = Path("palavras_pt.txt")
-
-
-def normalizar_palavra(palavra):
-    return "".join(
-        letra
-        for letra in unicodedata.normalize("NFD", palavra.lower())
-        if unicodedata.category(letra) != "Mn"
-    )
-
-
-def obter_palavra_forca():
-
-    if not ARQUIVO_PALAVRAS.exists():
-        raise FileNotFoundError(
-            "O arquivo palavras_pt.txt não foi encontrado."
-        )
-
-    with ARQUIVO_PALAVRAS.open(
-        "r",
-        encoding="utf-8"
-    ) as arquivo:
-
-        palavras = [
-            normalizar_palavra(linha.strip())
-            for linha in arquivo
-            if linha.strip()
-        ]
-
-    palavras_validas = [
-        palavra
-        for palavra in palavras
-        if palavra.isalpha() and 4 <= len(palavra) <= 15
-    ]
-
-    if not palavras_validas:
-        raise ValueError(
-            "Não existem palavras válidas no arquivo."
-        )
-
-    return random.choice(palavras_validas)
-
-@bot.command(name="forca")
-async def forca(ctx, letra: str = None):
-    usuario = str(ctx.author.id)
-
-    # Iniciar partida
-    
-    if letra is None:
-        try:
-            palavra = obter_palavra_forca()
-        except (FileNotFoundError, ValueError) as erro:
-            print(f"Erro ao iniciar a forca: {erro}")
-            await ctx.send(f"Não foi possível iniciar jogo: {erro}")
-            return
-
-        JOGOS_FORCA[usuario] = {
-            "palavra": palavra,
-            "letras": [],
-            "erros": 0
-        }
-
-        await ctx.send(
-            "🔤 **JOGO DA FORCA INICIADO!**\n"
-            "Adivinhe a palavra usando `/forca letra`."
-        )
-        return
-
-    jogo = JOGOS_FORCA.get(usuario)
-
-    if not jogo:
-        await ctx.send("Não existe partida ativa. Digite `/forca` para começar.")
-        return
-
-    letra = normalizar_palavra(letra.strip())
-
-    if len(letra) != 1 or not letra.isalpha():
-        await ctx.send("Digite somente uma letra.")
-        return
-
-    if letra in jogo["letras"]:
-        await ctx.send("Você já tentou essa letra!")
-        return
-
-    jogo["letras"].append(letra)
-
-    if letra not in jogo["palavra"]:
-        jogo["erros"] += 1
-
-    palavra = jogo["palavra"]
-
-    exibicao = " ".join(
-        l if l in jogo["letras"] else "_"
-        for l in palavra
-    )
-
-    if all(l in jogo["letras"] for l in palavra):
-        del JOGOS_FORCA[usuario]
-        adicionar_xp(ctx.author.id, 25)
-
-        await ctx.send(
-            f"🏆 **VOCÊ VENCEU!**\n"
-            f"A palavra era: **{palavra}**\n"
-            "⭐ +25 XP"
-        )
-
-    elif jogo["erros"] >= 6:
-        del JOGOS_FORCA[usuario]
-
-        await ctx.send(
-            f"❌ **FIM DE JOGO!**\n"
-            f"A palavra era: **{palavra}**\n"
-            "Digite `/forca` para começar outra partida."
-        )
-
-    else:
-        await ctx.send(
-            f"🔤 **JOGO DA FORCA**\n"
-            f"Palavra: `{exibicao}`\n"
-            f"Letras tentadas: {', '.join(jogo['letras'])}\n"
-            f"Erros: {jogo['erros']}/6"
-        )
 
 
 bot.run(DISOCRD_TOKEN)

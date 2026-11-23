@@ -291,9 +291,9 @@ class Tabuleiro(discord.ui.View):
             pass
 
 
-# ==========================================
+
 # COG PRINCIPAL
-# ==========================================
+
 
 class JogoDaVelha(commands.Cog):
 
