@@ -1,9 +1,29 @@
 {
     "usuarios": {
         "1322302863682179195": {
-            "partidas": 8,
-            "pontos": 80,
-            "vitorias": 6
+            "partidas": 9,
+            "pontos": 100,
+            "vitorias": 7
+        },
+        "734916277549793311": {
+            "partidas": 1,
+            "pontos": 0,
+            "vitorias": 0
+        },
+        "812541298825101333": {
+            "partidas": 1,
+            "pontos": 0,
+            "vitorias": 0
+        },
+        "1078502057146851418": {
+            "partidas": 1,
+            "pontos": 0,
+            "vitorias": 0
+        },
+        "1574201275082350674": {
+            "partidas": 1,
+            "pontos": 0,
+            "vitorias": 0
         }
     }
 }

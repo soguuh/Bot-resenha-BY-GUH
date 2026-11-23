@@ -15,6 +15,8 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from discord.ext import commands
 
+import traceback
+
 CONFIG_FILE = Path("sentinel_config.json")
 
 DEFAULT_CONFIG = {
@@ -973,6 +975,7 @@ WEATHER_API_KEY = "671686885bc87681e8cce11520344307"
 intents = discord.Intents.default()
 intents.message_content = True
 
+
 class GuhBot(commands.Bot):
 
     async def setup_hook(self):
@@ -988,11 +991,26 @@ class GuhBot(commands.Bot):
         for extensao in extensoes:
             try:
                 print(f"[DEBUG] Tentando carregar: {extensao}", flush=True)
+
                 await self.load_extension(extensao)
-                print(f"[GAMES] Módulo carregado: {extensao}")
+
+                print(f"[GAMES] Módulo carregado: {extensao}", flush=True)
 
             except Exception as erro:
-                print(f"[GAMES] Erro ao carregar {extensao}: {erro}")
+                print(f"[GAMES] Erro ao carregar {extensao}: {erro}", flush=True)
+                traceback.print_exc()
+
+
+        try:
+            comandos = await self.tree.sync()
+            print(
+                f"[SLASH] {len(comandos)} comandos sincronizados.",
+                flush=True
+            )
+        except Exception as erro:
+            print(f"[SLASH] Erro ao sincronizar comandos: {erro}", flush=True)
+            traceback.print_exc()
+
 
 bot = GuhBot(
     command_prefix="/",
@@ -1087,6 +1105,22 @@ async def enviar_resposta(ctx, texto):
 async def on_ready():
     print(f"Bot {bot.user} online e pronto pra resenha.")
 
+@bot.event
+async def on_command_error(ctx, error):
+
+    if isinstance(error, commands.CommandNotFound):
+        return
+
+    raise error
+
+@bot.event
+async def on_interaction(interaction):
+    print(
+        f"[INTERACTION] Tipo: {interaction.type} | "
+        f"Comando: {interaction.data}",
+        flush=True
+    )
+    
 @bot.command(name="chat")
 async def chat(ctx, *, mensagem):
     async with ctx.typing():
