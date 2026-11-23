@@ -1823,6 +1823,31 @@ IDENTIDADES = [
 
 ]
 
+def gerar_dica(identidade, numero):
+    nome = identidade["nome"]
+    categoria = identidade["categoria"]
+
+    palavras = nome.split()
+
+    if numero == 0:
+        return f"Sou {categoria}!"
+
+    elif numero == 1:
+        return f"Meu nome tem {len(palavras)} palavra(s)."
+
+    elif numero == 2:
+        tamanhos = " - ".join(str(len(p)) for p in palavras)
+        return f"Meu nome possui esta quantidade de letras por palavra: {tamanhos}."
+
+    elif numero == 3:
+        iniciais = " ".join(p[0].upper() for p in palavras)
+        return f"A primeira letra de cada palavra é: {iniciais}."
+
+    elif numero == 4:
+        finais = " ".join(p[-1].upper() for p in palavras)
+        return f"A última letra de cada palavra é: {finais}."
+
+    return "Você já recebeu todas as dicas disponíveis!"
 
 class QuemSouEu(commands.Cog):
     def __init__(self, bot):
@@ -1858,7 +1883,7 @@ class QuemSouEu(commands.Cog):
             partida = {
                 "identidade": identidade,
                 "tentativas": 0,
-                "dica_revelada": False
+                "dicas_enviadas": 0
             }
 
             embed = discord.Embed(
@@ -2020,16 +2045,19 @@ class QuemSouEu(commands.Cog):
             pass
 
         if tentativas % 5 == 0:
-            if not partida["dica_revelada"]:
-                partida["dica_revelada"] = True
+            numero = partida["dicas_enviadas"]
+
+            if numero < 5:
+                dica = gerar_dica(identidade, numero)
+                partida["dicas_enviadas"] += 1
 
                 await message.channel.send(
-                    f"💡 **DICA:** Sou {identidade['categoria']}!"
+                    f"💡 **DICA {numero + 1}:** {dica}"
                 )
+
             else:
                 await message.channel.send(
-                    f"💡 **DICA:** Minha categoria é "
-                    f"{identidade['categoria']}! Continue tentando."
+                    "💡 Você já recebeu todas as dicas! Continue tentando."
                 )
 
     @staticmethod
@@ -2054,6 +2082,10 @@ class QuemSouEu(commands.Cog):
 
         self.tarefas.clear()
         self.partidas.clear()
+
+
+## GERADOR AUTOMATICO DE DICAS
+
 
 
 async def setup(bot):
