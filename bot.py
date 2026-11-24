@@ -14,6 +14,8 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from discord.ext import commands
+from discord import app_commands
+
 
 import traceback
 
@@ -983,14 +985,18 @@ class GuhBot(commands.Bot):
         print("[DEBUG] SETUP_HOOK EXECUTADO!", flush=True)
 
         extensoes = [
+            ## games 
+
             "games.mimica",
             "games.quiz",
             "games.desenho",
             "games.jogodavelha",
             "games.quemsoueu",
-
             "games.adivinhar",
             "games.forca",
+
+            ## sistema de mídia
+            "media.baixar"
         ]
 
         for extensao in extensoes:
@@ -1007,6 +1013,14 @@ class GuhBot(commands.Bot):
 
 
         try:
+            print("\n[DEBUG] COMANDOS REGISTRADOS:")
+            for comando in self.tree.get_commands():
+                print(f" - /{comando.name}")
+
+                if isinstance(comando, app_commands.Group):
+                    for subcomando in comando.commands:
+                        print(f"    └── /{comando.name} {subcomando.name}")
+
             comandos = await self.tree.sync()
             print(
                 f"[SLASH] {len(comandos)} comandos sincronizados.",
