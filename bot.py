@@ -27,6 +27,12 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+from config import (
+    DISCORD_TOKEN,
+    OPENROUTER_API_KEY,
+    OPENWEATHER_API_KEY
+)
+
 CONFIG_FILE = Path("sentinel_config.json")
 
 DEFAULT_CONFIG = {
@@ -974,13 +980,15 @@ Objetivo: {objetivo}
 }
 
 
-DISOCRD_TOKEN = "MTU3MzcyNzkxMTcyMTA1MDI2Mw.GRG-I0.Ifn7kGDtwvDBDcNn6KC3oQbFJxbs55H8il-Cjk"   
-OPENROUTER_API_KEY = "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"
-WEATHER_API_KEY = "a47a731e0d38cef5bdbe37dd417027d5"
+DISOCRD_TOKEN = "DISCORD_TOKEN"   
+OPENROUTER_API_KEY = "OPENROUTER_API_KEY"
+WEATHER_API_KEY = "OPENWEATHER_API_KEY"
 
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
+intents.presences = True
 
 
 class GuhBot(commands.Bot):
@@ -1013,8 +1021,6 @@ class GuhBot(commands.Bot):
 
             ## ofertas pro cs
 
-            "ofertas.radar",
-            "ofertas.monitor",
             "ofertas.monitor"
         ]
 
@@ -1554,4 +1560,4 @@ async def sortear(ctx, *, opcoes: str):
 
 
 
-bot.run(DISOCRD_TOKEN)
+bot.run(DISCORD_TOKEN)
