@@ -25,11 +25,7 @@ DEFAULT_CONFIG = {
     "model": "openrouter/free",
     "temperature": 1.2,
     "top_p": 0.9,
-    "top_k": 50,
-    "min_p": 0.0,
-    "repeat_penalty": 1.05,
-    "num_ctx": 4096,
-    "num_predict": 4096,
+    "max_tokens": 16384,
     "seed": 42,
 
 
@@ -970,9 +966,9 @@ Objetivo: {objetivo}
 }
 
 
-DISOCRD_TOKEN = "SEU_TOKEN"
-OPENROUTER_API_KEY = "SUA_CHAVE_API"
-WEATHER_API_KEY = "SUA_CHAVE_API"
+DISOCRD_TOKEN = "MTU3MzcyNzkxMTcyMTA1MDI2Mw.GRG-I0.Ifn7kGDtwvDBDcNn6KC3oQbFJxbs55H8il-Cjk"   
+OPENROUTER_API_KEY = "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"
+WEATHER_API_KEY = "a47a731e0d38cef5bdbe37dd417027d5"
 
 
 intents = discord.Intents.default()
@@ -1043,6 +1039,23 @@ print("[DEBUG] Método setup_hook:", bot.setup_hook, flush=True)
 def call_openrouter(prompt):
 
     try:
+        payload = {
+            "model": CONFIG["model"],
+            "messages": [
+                {
+                    "role": "system",
+                    "content": CONFIG["system"]
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": CONFIG["temperature"],
+            "top_p": CONFIG["top_p"],
+            "max_tokens": CONFIG["max_tokens"]
+        }
+
         response = requests.post(
             url="https://openrouter.ai/api/v1/chat/completions",
 
@@ -1053,29 +1066,7 @@ def call_openrouter(prompt):
                 "Content-Type": "application/json"
             },
 
-            json={
-                "model": CONFIG["model"],
-
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": CONFIG["system"]
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-
-                "temperature": CONFIG["temperature"],
-                "top_p": CONFIG["top_p"],
-                "top_k": CONFIG["top_k"],
-                "min_p": CONFIG["min_p"],
-                "repetition_penalty": CONFIG["repeat_penalty"],
-                "max_tokens": CONFIG["num_predict"],
-                "seed": CONFIG["seed"]
-            },
-
+            json=payload,
             timeout=120
         )
 
@@ -1179,6 +1170,7 @@ async def investigar(ctx, *, mensagem):
 async def clima(ctx, *, localidade: str):
 
     try:
+        etapa = "Geocodificação"
         partes = [p.strip() for p in localidade.split(",")]
 
         cidade = partes[0]
@@ -1230,6 +1222,8 @@ async def clima(ctx, *, localidade: str):
                 "units": "metric",
                 "lang": "pt_br"
             }
+
+            etapa = "Consulta meteorológica"
 
             clima_res = await asyncio.to_thread(
                 requests.get,
@@ -1286,9 +1280,19 @@ async def clima(ctx, *, localidade: str):
             else "desconhecido"
         )
 
-        print(f"Erro HTTP no clima: {status}")
+        detalhe = (
+            erro.response.text[:500]
+            if erro.response is not None
+            else "Sem detalhes"
+        )
+
+        print(f"[CLIMA] Etapa: {etapa}")
+        print(f"[CLIMA] HTTP: {status}")
+        print(f"[CLIMA] Resposta: {detalhe}")
+
         await ctx.send(
-            f"Erro na API meteorológica. Código HTTP: {status}"
+            f"Erro na API meteorológica: HTTP {status}.\n"
+            f"Etapa: **{etapa}**"
         )
 
     except requests.exceptions.RequestException as erro:
