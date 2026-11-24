@@ -10,6 +10,9 @@ utiliza a API openweathermap para o comando /clima que verifica clima de todos o
 as materias, conteudos e perguntas dos quiz estao nos arquivos json na pasta
  bot altamente automatizado e versatil para resenha com amigos
 
+
+ projeto ainda esta sendo desenvolvido, novos comandos estão por vir, correções e tudo...
+
  creditos: by GUh
 
  aprendendo python
