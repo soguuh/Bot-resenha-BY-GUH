@@ -49,19 +49,27 @@ async def validar_link(url: str) -> bool:
 
 async def baixar_arquivo(url: str, limite: int, tipo: str):
     """
-    Motor Híbrido de Download com Debug de Erro.
+    Motor Híbrido de Download com Suporte a Spotify e YT-DLP.
     """
     
-    # --- TENTATIVA 1: YT-DLP ---
+    # --- TENTATIVA 0: SPOTIFY ---
+    # Se for link do Spotify e o usuário quer áudio, usa o módulo especializado
+    if "open.spotify.com" in url and tipo == "audio":
+        try:
+            # Importação relativa para pegar o arquivo dentro de /plataformas/
+            from .plataformas.spotify import baixar_spotify
+            return await asyncio.to_thread(baixar_spotify, url)
+        except Exception as e:
+            print(f"DEBUG: spotify.py falhou para {url}. Motivo: {e}")
+            # Se o spotify.py falhar, ele tenta o yt-dlp abaixo que também suporta spotify
+
+    # --- TENTATIVA 1: YT-DLP (YouTube, TikTok, Instagram, etc) ---
     try:
-        # Tenta baixar via yt-dlp
         return await asyncio.to_thread(_download_via_ytdlp, url, tipo)
     except Exception as e:
-        # ESTA LINHA É PARA VOCÊ VER O ERRO REAL NO TERMINAL DO BOT
         print(f"DEBUG: yt-dlp falhou para {url}. Motivo: {e}")
-        # Se falhar, ele tenta o download direto abaixo
 
-    # --- TENTATIVA 2: DOWNLOAD DIRETO ---
+    # --- TENTATIVA 2: DOWNLOAD DIRETO (Links .mp3, .mp4 diretos) ---
     if tipo == "audio":
         extensoes, prefixo = EXTENSOES_AUDIO, "audio/"
     elif tipo == "video":
@@ -95,7 +103,6 @@ async def baixar_arquivo(url: str, limite: int, tipo: str):
             extensao = Path(unquote(parsed.path)).suffix.lower()
 
             if not (extensao in extensoes or content_type.startswith(prefixo)):
-                # É AQUI QUE O ERRO ESTÁ ACONTECENDO
                 raise ValueError(f"O link não contém um arquivo de {tipo} válido.")
 
             tamanho = response.content_length
@@ -115,7 +122,6 @@ async def baixar_arquivo(url: str, limite: int, tipo: str):
             return bytes(dados), nome
         finally:
             if response: response.release()
-
 
 def _download_via_ytdlp(url: str, tipo: str):
     """Função interna síncrona para processar downloads via yt-dlp."""
@@ -141,6 +147,7 @@ def _download_via_ytdlp(url: str, tipo: str):
     elif tipo == "video":
         ydl_opts.update({
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'merge_output_format': 'mp4',
         })
 
     with YoutubeDL(ydl_opts) as ydl:
@@ -148,19 +155,19 @@ def _download_via_ytdlp(url: str, tipo: str):
         filename = ydl.prepare_filename(info)
         
         if tipo == "audio":
-            filename = filename.rsplit('.', 1)[0] + ".mp3"
+            filename = os.path.splitext(filename)[0] + ".mp3"
+        elif tipo == "video":
+            filename = os.path.splitext(filename)[0] + ".mp4"
         
         with open(filename, 'rb') as f:
             data = f.read()
         
-        os.remove(filename) # Limpeza imediata
+        os.remove(filename)
         return data, os.path.basename(filename)
-
 
 def localizar_ffmpeg():
     """Localiza prioritariamente o FFmpeg 9.1 instalado pelo WinGet."""
     local_appdata = os.environ.get("LOCALAPPDATA")
-
     if local_appdata:
         pasta = (
             Path(local_appdata)
@@ -171,73 +178,43 @@ def localizar_ffmpeg():
             / "ffmpeg-9.1-full_build"
             / "bin"
         )
-
         ffmpeg = pasta / "ffmpeg.exe"
         ffprobe = pasta / "ffprobe.exe"
-
         if ffmpeg.exists() and ffprobe.exists():
             return str(ffmpeg), str(ffprobe)
 
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
-
     if ffmpeg and ffprobe:
         return ffmpeg, ffprobe
 
-    raise RuntimeError(
-        "FFmpeg ou FFprobe não encontrado. Verifique a instalação."
-    )
-
+    raise RuntimeError("FFmpeg ou FFprobe não encontrado. Verifique a instalação.")
 
 def comprimir_video(dados: bytes, limite: int):
     """Comprime vídeos usando o FFmpeg localizado automaticamente."""
     ffmpeg, _ = localizar_ffmpeg()
-
     with tempfile.TemporaryDirectory() as pasta:
         entrada = Path(pasta) / "in.mp4"
         saida = Path(pasta) / "out.mp4"
-
         entrada.write_bytes(dados)
-
         comando = [
-            ffmpeg, "-y",
-            "-i", str(entrada),
+            ffmpeg, "-y", "-i", str(entrada),
             "-vf", "scale='min(1280,iw)':-2",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "28",
-            "-c:a", "aac",
-            "-b:a", "96k",
-            "-movflags", "+faststart",
-            str(saida)
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+            "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(saida)
         ]
-
         try:
-            subprocess.run(
-                comando,
-                capture_output=True,
-                timeout=180,
-                check=True
-            )
+            subprocess.run(comando, capture_output=True, timeout=180, check=True)
         except subprocess.CalledProcessError as erro:
-            detalhe = erro.stderr.decode(
-                "utf-8", errors="replace"
-            )[-1500:] if erro.stderr else "Erro desconhecido"
-
-            raise RuntimeError(
-                f"Falha na compressão do vídeo: {detalhe}"
-            ) from erro
+            detalhe = erro.stderr.decode("utf-8", errors="replace")[-1500:] if erro.stderr else "Erro desconhecido"
+            raise RuntimeError(f"Falha na compressão do vídeo: {detalhe}") from erro
 
         if not saida.exists():
             raise RuntimeError("O FFmpeg não gerou o vídeo.")
-
         if saida.stat().st_size > limite:
-            raise ValueError(
-                "Vídeo ainda é grande demais após compressão."
-            )
+            raise ValueError("Vídeo ainda é grande demais após compressão.")
 
         return saida.read_bytes(), "video_comprimido.mp4"
-
 
 def criar_figurinha(imagem_bytes: bytes) -> bytes:
     """Converte imagem para WebP quadrado e otimizado para Discord."""
@@ -245,12 +222,10 @@ def criar_figurinha(imagem_bytes: bytes) -> bytes:
         with Image.open(io.BytesIO(imagem_bytes)) as imagem:
             imagem = imagem.convert("RGBA")
             imagem.thumbnail((512, 512), Image.Resampling.LANCZOS)
-
             quadro = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
             x = (512 - imagem.width) // 2
             y = (512 - imagem.height) // 2
             quadro.alpha_composite(imagem, (x, y))
-
             qualidade = 85
             while qualidade >= 25:
                 saida = io.BytesIO()
@@ -258,7 +233,6 @@ def criar_figurinha(imagem_bytes: bytes) -> bytes:
                 dados = saida.getvalue()
                 if len(dados) <= 500 * 1024: return dados
                 qualidade -= 10
-            
             return dados
     except Exception as e:
         raise ValueError(f"Erro ao processar imagem: {e}")

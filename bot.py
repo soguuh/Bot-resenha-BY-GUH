@@ -18,6 +18,14 @@ from discord import app_commands
 
 
 import traceback
+from dotenv import load_dotenv
+load_dotenv()
+
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 CONFIG_FILE = Path("sentinel_config.json")
 
@@ -990,9 +998,24 @@ class GuhBot(commands.Bot):
             "games.quemsoueu",
             "games.adivinhar",
             "games.forca",
+            "games.detetive",
+            "games.portal",
+            "games.tribunal",
+            "games.tradutor_caos.py"
 
             ## sistema de mídia
             "media.baixar"
+
+            ## social
+
+            "social.confissao",
+            "social.vibe",
+
+            ## ofertas pro cs
+
+            "ofertas.radar",
+            "ofertas.monitor",
+            "ofertas.monitor"
         ]
 
         for extensao in extensoes:
