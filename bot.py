@@ -18,8 +18,6 @@ from discord import app_commands
 
 
 import traceback
-from dotenv import load_dotenv
-load_dotenv()
 
 import logging
 logging.basicConfig(
@@ -33,6 +31,7 @@ from config import (
     OPENWEATHER_API_KEY
 )
 
+import config 
 CONFIG_FILE = Path("sentinel_config.json")
 
 DEFAULT_CONFIG = {
@@ -980,9 +979,9 @@ Objetivo: {objetivo}
 }
 
 
-DISOCRD_TOKEN = "DISCORD_TOKEN"   
-OPENROUTER_API_KEY = "OPENROUTER_API_KEY"
-WEATHER_API_KEY = "OPENWEATHER_API_KEY"
+DISCORD_TOKEN = "DISCORD_TOKEN"   
+OPENROUTER_API_KEY = OPENROUTER_API_KEY
+WEATHER_API_KEY = OPENWEATHER_API_KEY
 
 
 intents = discord.Intents.default()
@@ -1009,10 +1008,10 @@ class GuhBot(commands.Bot):
             "games.detetive",
             "games.portal",
             "games.tribunal",
-            "games.tradutor_caos.py"
+            "games.tradutor_caos.py",
 
             ## sistema de mídia
-            "media.baixar"
+            "media.baixar",
 
             ## social
 
@@ -1021,7 +1020,6 @@ class GuhBot(commands.Bot):
 
             ## ofertas pro cs
 
-            "ofertas.monitor"
         ]
 
         for extensao in extensoes:
@@ -1560,4 +1558,8 @@ async def sortear(ctx, *, opcoes: str):
 
 
 
-bot.run(DISCORD_TOKEN)
+
+print("[DEBUG] Token do config:", len(config.DISCORD_TOKEN or ""))
+print("[DEBUG] Token carregado corretamente:", bool(config.DISCORD_TOKEN))
+
+bot.run(config.DISCORD_TOKEN)
